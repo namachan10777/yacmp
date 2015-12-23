@@ -1,7 +1,8 @@
 import music;
 import std.conv,
 	   std.string,
-	   std.concurrency;
+	   std.concurrency,
+	   std.stdio;
 import dlangui,
 	   dlangui.dialogs.filedlg,
 	   dlangui.dialogs.dialog;
@@ -24,65 +25,69 @@ extern(C) int UIAppMain(string[] args)
 	Platform.instance.uiLanguage = "en";
 	Platform.instance.uiTheme = "theme_default";
 	window = Platform.instance.createWindow("yacmp",null,0,300,100);
+	window.mainWidget = parseML(q{
+		VerticalLayout{
+			minWidth:300
+			minHeight:100
+			TextWidget{
+				id: musicName
+				text:"File Not Found"
+				fontSize:15
+				minHeight: 50
+			}
+			HorizontalLayout{
+				Button{
+					id: stopButton
+					text:"stop"
+					minWidth:100
+					minHeight:50
+				}
+				Button{
+					id: continueButton
+					text:"continue"
+					minWidth:100
+					minHeight:50
+				}
+				Button{
+					id: changeButton
+					text:"select"
+					minWidth:100
+					minHeight:50
+				}
+			}
+		}
+	});
+	window.mainWidget.childById!Button("stopButton").enabled = false;
+	window.mainWidget.childById!Button("continueButton").enabled = false;
 
-	auto stopButton = createButton;
-	stopButton.text = "stop";
-	stopButton.enabled = false;
-	auto continueButton = createButton;
-	continueButton.text = "continue";
-	continueButton.enabled = false;
-	auto changeButton = createButton;
-	changeButton.text = "select music";
-	auto musicName = new TextWidget;
-	musicName.fontSize = 15;
-	musicName.text = "file not found";
-	musicName.minHeight = 100;
+	window.mainWidget.childById!Button("stopButton").click = delegate(Widget src)
+		{
+			
+			window.mainWidget.childById!Button("stopButton").enabled = false;
+			window.mainWidget.childById!Button("continueButton").enabled = true;
+			stopMusic;
+			return true;		
+		};
+	window.mainWidget.childById!Button("continueButton").click = delegate(Widget src)
+		{
+			window.mainWidget.childById!Button("stopButton").enabled = true;
+			window.mainWidget.childById!Button("continueButton").enabled = false;
+			continueMusic;
+			return true;
+		};
+	window.mainWidget.childById!Button("changeButton").click = delegate(Widget src)
+		{
+			played = true;
+			window.mainWidget.childById!Button("stopButton").enabled = true;
+			window.mainWidget.childById!Button("continueButton").enabled = false;
+			window.mainWidget.childById!Button("changeButton").text = "change";
+			changeMusic;
+			return true;
+		};
 
-	stopButton.addOnClickListener(delegate(Widget src){
-				stopButton.enabled = false;
-				continueButton.enabled = true;
-				stopMusic();
-				return true;
-			});
-	continueButton.addOnClickListener(delegate(Widget src){
-				continueButton.enabled = false;
-				stopButton.enabled = true;
-				continueMusic();
-				stopMusic();
-				return true;
-			});
-
-
-	changeButton.addOnClickListener(delegate(Widget src){
-				continueButton.enabled = false;
-				stopButton.enabled = true;
-				changeMusic(musicName);
-				changeButton.text = "change";
-				return true;
-			});
-					
-	auto layout = new VerticalLayout;
-	layout.maxHeight = 100;
-	layout.maxWidth = 300;
-	auto buttonLayout = new HorizontalLayout;
-	buttonLayout.addChild(stopButton);
-	buttonLayout.addChild(continueButton);
-	buttonLayout.addChild(changeButton);
-	layout.addChild(musicName);
-	layout.addChild(buttonLayout);
-	window.mainWidget = layout;
 	window.show;
 	tid = spawn(&yacmp_main);
 	return Platform.instance.enterMessageLoop;
-}
-
-Button createButton()
-{
-	auto button = new Button;
-	button.fontSize = 15;
-	button.minWidth = 100;
-	button.minHeight = 50;
- 	return button;
 }
 
 void continueMusic()
@@ -95,11 +100,10 @@ void stopMusic()
 	tid.send(STOP);
 }
 
-void changeMusic(TextWidget text)
+void changeMusic()
 {
 	UIString caption = "select file"d;
 	uint flg = DialogFlag.Modal;
-	string file;
 	auto dialog = new FileDialog(caption,window,null,flg);
 	dialog.dialogResult = delegate(Dialog dialog,const Action result)
 		{
@@ -107,15 +111,10 @@ void changeMusic(TextWidget text)
 			{
 				sendChangeSignal(result.stringParam);
 				version(Windows)
-				{
 					auto strings = result.stringParam.split("\\");
-					text.text = strings[$-1].to!dstring;
-				}
 				else
-				{
 					auto strings = result.stringParam.split("/");
-					text.text = strings[$-1].to!dstring;
-				}
+				window.mainWidget.childById!TextWidget("musicName").text = strings[$-1].to!dstring;
 			}
 		};
 	dialog.show;
@@ -124,14 +123,8 @@ void changeMusic(TextWidget text)
 void sendChangeSignal(string file)
 {
 	if (played)
-	{
 		tid.send(CHANGE);
-		tid.send(file);
-	}
 	else
-	{
-
-		tid.send(file);
 		played = false;
-	}
+	tid.send(file);
 }

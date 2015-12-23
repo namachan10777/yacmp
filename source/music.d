@@ -75,6 +75,7 @@ shared static int position;
 shared static bool firstTime;
 
 void musicPlay(string fileName) {
+  firstTime.writeln;
 
   firstTime = true;
 
@@ -148,13 +149,18 @@ void yacmp_main(){
   writeln("Copyright (C) 2015 alphaKAI");
   writeln("The MIT License");+/
   
-  //write("please input filename:");
-  fileName = receiveOnly!(string)();
+  receive((string msg){fileName = msg;},
+          (OwnerTerminated o){
+		    playing = false;
+			endFlag = true;
+          });
   new Thread(() => musicPlay(fileName)).start;
 
   while(!endFlag){
     writeln("coomand: 1 -> quit, 2 -> stop, 3 -> continue, 4 -> change");
-	int input = receiveOnly!(int)();
+	int input;
+    receive((int msg){input = msg;},
+	  (OwnerTerminated o){input = 4;});
     if(input == 1){
       playing = false;
       endFlag = true;
@@ -166,8 +172,12 @@ void yacmp_main(){
       new Thread(() => musicPlay(fileName)).start;
     } else if(input == 4){
       playing = false;
+      receive((string msg){fileName = msg;},
+	    (OwnerTerminated o){
+          playing = false;
+		  endFlag = true;
+		});
       write("please input filename:");
-      fileName = receiveOnly!(string)();
       resume = false;
       new Thread(() => musicPlay(fileName)).start;
     }
