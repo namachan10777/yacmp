@@ -1,175 +1,133 @@
-/*
-  Yet Another Console Music Player
-  Support formats are based on that of libsndfile.
-  Copyright (C) 2015 alphaKAI
-  The MIT License
-*/
+import music;
+import std.conv,
+	   std.string,
+	   std.concurrency;
+import dlangui,
+	   dlangui.dialogs.filedlg,
+	   dlangui.dialogs.dialog;
 
-import core.thread,
-       std.stdio,
-       std.string,
-       std.conv;
-import deimos.portaudio;
-import derelict.sndfile.sndfile;
+enum MARGIN = 10;
+enum CONTINUE = 3;
+enum STOP = 2;
+enum CHANGE = 4;
 
-static this(){
-  DerelictSndFile.load;
+mixin APP_ENTRY_POINT;
+
+private
+{
+	Window window;
+	bool played;
+	Tid tid;
+}
+extern(C) int UIAppMain(string[] args)
+{
+	Platform.instance.uiLanguage = "en";
+	Platform.instance.uiTheme = "theme_default";
+	window = Platform.instance.createWindow("yacmp",null,0,300,100);
+
+	auto stopButton = createButton;
+	stopButton.text = "stop";
+	stopButton.enabled = false;
+	auto continueButton = createButton;
+	continueButton.text = "continue";
+	continueButton.enabled = false;
+	auto changeButton = createButton;
+	changeButton.text = "change";
+	auto musicName = new TextWidget;
+	musicName.fontSize = 15;
+	musicName.text = "file not found";
+	musicName.minHeight = 100;
+
+	stopButton.addOnClickListener(delegate(Widget src){
+				stopButton.enabled = false;
+				continueButton.enabled = true;
+				stopMusic();
+				return true;
+			});
+	continueButton.addOnClickListener(delegate(Widget src){
+				continueButton.enabled = false;
+				stopButton.enabled = true;
+				continueMusic();
+				stopMusic();
+				return true;
+			});
+
+
+	changeButton.addOnClickListener(delegate(Widget src){
+				continueButton.enabled = false;
+				stopButton.enabled = true;
+				changeMusic(musicName);
+				return true;
+			});
+					
+	auto layout = new VerticalLayout;
+	layout.maxHeight = 100;
+	layout.maxWidth = 300;
+	auto buttonLayout = new HorizontalLayout;
+	buttonLayout.addChild(stopButton);
+	buttonLayout.addChild(continueButton);
+	buttonLayout.addChild(changeButton);
+	layout.addChild(musicName);
+	layout.addChild(buttonLayout);
+	window.mainWidget = layout;
+	window.show;
+	tid = spawn(&yacmp_main);
+	return Platform.instance.enterMessageLoop;
 }
 
-struct PlayData{
-  SNDFILE* sndFile;
-  SF_INFO sfInfo;
-  int position;
+Button createButton()
+{
+	auto button = new Button;
+	button.fontSize = 15;
+	button.minWidth = 100;
+	button.minHeight = 50;
+ 	return button;
 }
 
-extern(C) int Callback(
-      const(void)* input,
-      void* output,
-      ulong frameCount,
-      const(PaStreamCallbackTimeInfo)* timeInfo,
-      PaStreamCallbackFlags statusFlags,
-      void *userData
-    ){
+void continueMusic()
+{
+	tid.send(CONTINUE);	
+}		
 
-  if (Thread.getThis() is null) 
-    thread_attachThis();
-
-  PlayData* data = cast(PlayData*)userData;
-
-  int* cursor;
-  int* _out = cast(int*)output;
-  int thisSize = cast(int)frameCount;
-  ulong thisRead;
-
-  cursor = _out;
-
-  while(thisSize > 0){
-    if(!firstTime && data.position == 0)
-      playing = false;    
-    if(firstTime)
-      firstTime = false;
-
-    sf_seek(data.sndFile, data.position, SEEK_SET);
-
-    if(thisSize > (data.sfInfo.frames - data.position)){
-      thisRead = data.sfInfo.frames - data.position;
-      data.position = 0;
-    } else {
-      thisRead = thisSize;
-      data.position += thisRead;
-    }
-
-    sf_readf_int(data.sndFile, cursor, thisRead);
-    cursor += thisRead;
-    thisSize -= thisRead;
-  }
-
-  return paContinue;
+void stopMusic()
+{
+	tid.send(STOP);
 }
 
-shared static bool playing;
-shared static bool resume;
-shared static int position;
-shared static bool firstTime;
-
-void musicPlay(string fileName) {
-
-  firstTime = true;
-
-  PaStream* stream;
-  PaError error;
-  PaStreamParameters outputParameters;
-  PlayData* data = new PlayData;
-  
-  data.position = resume ? position : 0;
-  data.sfInfo.format = 0;
-  data.sndFile = sf_open(fileName.toStringz, SFM_READ, &data.sfInfo);
-  
-  if(!data.sndFile){
-    writeln("error opening file\n");
-    playing = false;
-    return;
-  }
-
-  Pa_Initialize;
-
-  outputParameters.device = Pa_GetDefaultOutputDevice;
-  outputParameters.channelCount = data.sfInfo.channels;
-  outputParameters.sampleFormat = paInt32;
-  outputParameters.suggestedLatency = 0.2;
-  outputParameters.hostApiSpecificStreamInfo = null;
-
-  PaStreamParameters inputParameters;
-
-  error = Pa_OpenStream(
-      &stream,
-      null,
-      &outputParameters,
-      data.sfInfo.samplerate,
-      paFramesPerBufferUnspecified,
-      paNoFlag,
-      &Callback,
-      data);
-
-  if(error){
-    writeln("error opening output, error code = ", error);
-    Pa_Terminate;
-    return;
-  }
-
-  playing = true;
-  Pa_StartStream(stream);
-  while(true){
-    Thread.sleep(dur!"msecs"(100));
-    if(!playing){
-      writeln("STOP");
-      break;
-    }
-  }
-
-  Pa_StopStream(stream);
-  Pa_CloseStream(stream);
-  Pa_Terminate;
-
-  position = data.position;
-
-  return;
+void changeMusic(TextWidget text)
+{
+	UIString caption = "select file"d;
+	uint flg = DialogFlag.Modal;
+	string file;
+	auto dialog = new FileDialog(caption,window,null,flg);
+	dialog.dialogResult = delegate(Dialog dialog,const Action result)
+		{
+			sendChangeSignal(result.stringParam);
+			version(Windows)
+			{
+				auto strings = result.stringParam.split("\\");
+				text.text = strings[$-1].to!dstring;
+			}
+			else
+			{
+				auto strings = result.stringParam.split("/");
+				text.text = strings[$-1].to!dstring;
+			}
+		};
+	dialog.show;
 }
 
+void sendChangeSignal(string file)
+{
+	if (played)
+	{
+		tid.send(CHANGE);
+		tid.send(file);
+	}
+	else
+	{
 
-int main(){
-  string fileName;
-  bool endFlag;
-
-  writeln("Yet Another Console Music Player");
-  writeln("Support formats are based on that of libsndfile.");
-  writeln("Copyright (C) 2015 alphaKAI");
-  writeln("The MIT License");
-  
-  write("please input filename:");
-  fileName = readln.chomp.to!string;
-  new Thread(() => musicPlay(fileName)).start;
-
-  while(!endFlag){
-    writeln("coomand: 1 -> quit, 2 -> stop, 3 -> continue, 4 -> change");
-    int input = readln.chomp.to!int;
-    if(input == 1){
-      playing = false;
-      endFlag = true;
-    } else if(input == 2){
-      playing = false;
-      writeln("STOP , playing:", playing);
-    } else if(input == 3){
-      resume = true;
-      new Thread(() => musicPlay(fileName)).start;
-    } else if(input == 4){
-      playing = false;
-      write("please input filename:");
-      fileName = readln.chomp.to!string;
-      resume = false;
-      new Thread(() => musicPlay(fileName)).start;
-    }
-  }
-
-  return 0;
+		tid.send(file);
+		played = false;
+	}
 }
