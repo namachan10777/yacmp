@@ -32,7 +32,7 @@ extern(C) int UIAppMain(string[] args)
 	continueButton.text = "continue";
 	continueButton.enabled = false;
 	auto changeButton = createButton;
-	changeButton.text = "change";
+	changeButton.text = "select music";
 	auto musicName = new TextWidget;
 	musicName.fontSize = 15;
 	musicName.text = "file not found";
@@ -57,6 +57,7 @@ extern(C) int UIAppMain(string[] args)
 				continueButton.enabled = false;
 				stopButton.enabled = true;
 				changeMusic(musicName);
+				changeButton.text = "change";
 				return true;
 			});
 					
@@ -102,16 +103,19 @@ void changeMusic(TextWidget text)
 	auto dialog = new FileDialog(caption,window,null,flg);
 	dialog.dialogResult = delegate(Dialog dialog,const Action result)
 		{
-			sendChangeSignal(result.stringParam);
-			version(Windows)
+			if (result.stringParam.length != 0)
 			{
-				auto strings = result.stringParam.split("\\");
-				text.text = strings[$-1].to!dstring;
-			}
-			else
-			{
-				auto strings = result.stringParam.split("/");
-				text.text = strings[$-1].to!dstring;
+				sendChangeSignal(result.stringParam);
+				version(Windows)
+				{
+					auto strings = result.stringParam.split("\\");
+					text.text = strings[$-1].to!dstring;
+				}
+				else
+				{
+					auto strings = result.stringParam.split("/");
+					text.text = strings[$-1].to!dstring;
+				}
 			}
 		};
 	dialog.show;
