@@ -1,6 +1,6 @@
 #YAGMP
 これはYACMPにGUIを実装したものです。
-YACMPに関してはYACMP_README.mdをご覧ください。
+先にYACMP_README.mdを読んでください。
 このソフトウェアはYACMPの部分も含んでいるためビルドにYACMPは必要ありません。
 #Licence
 The MIT Licence
